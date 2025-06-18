@@ -9,7 +9,7 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
-st.set_page_config(page_title="Sistema de Reserva de Entregas", layout="wide")
+st.set_page_config(page_title="Dismac: Reserva de Entrega de Mercadería", layout="wide")
 
 # ─────────────────────────────────────────────────────────────
 # 1. Configuration
@@ -31,11 +31,11 @@ except KeyError as e:
     st.stop()
 
 # ─────────────────────────────────────────────────────────────
-# 2. Excel Download Functions
+# 2. Excel Download Functions - UPDATED TO INCLUDE GESTION SHEET
 # ─────────────────────────────────────────────────────────────
 @st.cache_data(ttl=300)  # Cache for 5 minutes
 def download_excel_to_memory():
-    """Download Excel file from SharePoint to memory"""
+    """Download Excel file from SharePoint to memory - INCLUDES ALL SHEETS"""
     try:
         # Authenticate
         user_credentials = UserCredential(USERNAME, PASSWORD)
@@ -64,21 +64,33 @@ def download_excel_to_memory():
         
         file_content.seek(0)
         
-        # Load both sheets
+        # Load all sheets - UPDATED
         credentials_df = pd.read_excel(file_content, sheet_name="proveedor_credencial", dtype=str)
         reservas_df = pd.read_excel(file_content, sheet_name="proveedor_reservas")
         
-        return credentials_df, reservas_df
+        # Try to load gestion sheet, create empty if doesn't exist - NEW
+        try:
+            gestion_df = pd.read_excel(file_content, sheet_name="proveedor_gestion")
+        except ValueError:
+            # Create empty gestion dataframe with required columns if sheet doesn't exist
+            gestion_df = pd.DataFrame(columns=[
+                'Orden_de_compra', 'Proveedor', 'Numero_de_bultos',
+                'Hora_llegada', 'Hora_inicio_atencion', 'Hora_fin_atencion',
+                'Tiempo_espera', 'Tiempo_atencion', 'Tiempo_total', 'Tiempo_retraso',
+                'numero_de_semana', 'hora_de_reserva'
+            ])
+        
+        return credentials_df, reservas_df, gestion_df
         
     except Exception as e:
         st.error(f"Error descargando Excel: {str(e)}")
-        return None, None
+        return None, None, None
 
 def save_booking_to_excel(new_booking):
-    """Save new booking to Excel file"""
+    """Save new booking to Excel file - PRESERVES ALL SHEETS"""
     try:
-        # Load current data
-        credentials_df, reservas_df = download_excel_to_memory()
+        # Load current data - UPDATED TO LOAD ALL SHEETS
+        credentials_df, reservas_df, gestion_df = download_excel_to_memory()
         
         if reservas_df is None:
             return False
@@ -91,11 +103,12 @@ def save_booking_to_excel(new_booking):
         user_credentials = UserCredential(USERNAME, PASSWORD)
         ctx = ClientContext(SITE_URL).with_credentials(user_credentials)
         
-        # Create Excel file
+        # Create Excel file - UPDATED TO SAVE ALL SHEETS
         excel_buffer = io.BytesIO()
         with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
             credentials_df.to_excel(writer, sheet_name="proveedor_credencial", index=False)
             updated_reservas_df.to_excel(writer, sheet_name="proveedor_reservas", index=False)
+            gestion_df.to_excel(writer, sheet_name="proveedor_gestion", index=False)  # NEW - PRESERVE GESTION SHEET
         
         # Get the file info
         file = ctx.web.get_file_by_id(FILE_ID)
@@ -128,13 +141,13 @@ def send_booking_email(supplier_email, supplier_name, booking_details):
     """Send booking confirmation email"""
     try:
         # Default CC recipients
-        cc_emails = ["leonardo.byon@gmail.com", "abc@gmail.com", "cdef@gmail.com"]
+        cc_emails = ["leonardo.byon@gmail.com"]
         
         # Email content
-        subject = "Confirmación de Reserva de Entrega"
+        subject = "Confirmación de Reserva para Entrega de Mercadería"
         
         body = f"""
-        Estimado/a {supplier_name},
+        Hola {supplier_name},
         
         Su reserva de entrega ha sido confirmada exitosamente.
         
@@ -144,18 +157,18 @@ def send_booking_email(supplier_email, supplier_name, booking_details):
         🕐 Horario: {booking_details['Hora']}
         📦 Número de bultos: {booking_details['Numero_de_bultos']}
         📋 Orden de compra: {booking_details['Orden_de_compra']}
-        👤 Proveedor: {booking_details['Proveedor']}
         
         INSTRUCCIONES:
         ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         • Llegue puntualmente en el horario reservado
-        • Tenga lista la documentación de la orden de compra
-        • Asegúrese de que los bultos estén correctamente etiquetados
+        • Tenga lista el Orden de Compra y cualquier otra documentación relevante
+        • Asegúrese de que los productos y numero de bultos coincidan con el Orden de Compra
+        • Si llega tarde, posiblemente tendra que esperar hasta el proximo cupo disponible del dia
         
         Gracias por utilizar nuestro sistema de reservas.
         
         Saludos cordiales,
-        Equipo de Almacén
+        Equipo de Almacén Dismac
         """
         
         # Create message
@@ -230,11 +243,11 @@ def get_available_slots(selected_date, reservas_df):
     return [slot for slot in all_slots if slot not in booked_slots]
 
 # ─────────────────────────────────────────────────────────────
-# 5. Authentication Function
+# 5. Authentication Function - UPDATED TO USE ALL SHEETS
 # ─────────────────────────────────────────────────────────────
 def authenticate_user(usuario, password):
     """Authenticate user against Excel data and get email"""
-    credentials_df, _ = download_excel_to_memory()
+    credentials_df, _, _ = download_excel_to_memory()  # UPDATED - Now returns 3 values
     
     if credentials_df is None:
         return False, "Error al cargar credenciales", None
@@ -269,20 +282,18 @@ def authenticate_user(usuario, password):
     return False, "Contraseña incorrecta", None
 
 # ─────────────────────────────────────────────────────────────
-# 4. Main App
+# 6. Main App - UPDATED TO USE ALL SHEETS
 # ─────────────────────────────────────────────────────────────
 def main():
-    st.title("🚚 Sistema de Reserva de Entregas")
+    st.title("🚚 Dismac: Reserva de Entrega de Mercadería")
     
-    # Download Excel when app starts
+    # Download Excel when app starts - UPDATED
     with st.spinner("Cargando datos..."):
-        credentials_df, reservas_df = download_excel_to_memory()
+        credentials_df, reservas_df, gestion_df = download_excel_to_memory()  # UPDATED - Now gets 3 values
     
     if credentials_df is None:
         st.error("❌ Error al cargar archivo")
         return
-    
-    st.success(f"✅ Datos cargados: {len(credentials_df)} usuarios, {len(reservas_df)} reservas")
     
     # Session state
     if 'authenticated' not in st.session_state:
@@ -395,86 +406,120 @@ def main():
                         if st.button(f"✅ {slot2}", key=f"slot_{i+1}", use_container_width=True):
                             selected_slot = slot2
         
-        # Booking form
+        # Booking form with MULTIPLE ORDEN DE COMPRA
         if selected_slot or 'selected_slot' in st.session_state:
             if selected_slot:
                 st.session_state.selected_slot = selected_slot
             
             st.markdown("---")
             st.subheader("📦 Información de Entrega")
-            st.caption("* Campos obligatorios")
             
-            with st.form("booking_form"):
-                # Date and time info (full width)
-                st.info(f"📅 Fecha: {selected_date}")
-                st.info(f"🕐 Horario: {st.session_state.selected_slot}")
-                
-                # Number of bultos (full width)
-                numero_bultos = st.number_input(
-                    "📦 Número de bultos", 
-                    min_value=1, 
-                    value=1,
-                    help="Cantidad de bultos o paquetes a entregar"
-                )
-                
-                # Purchase order (full width, mandatory)
-                orden_compra = st.text_input(
-                    "📋 Orden de compra *", 
-                    placeholder="Ej: OC-2024-001",
-                    help="Campo obligatorio - Ingrese el número de orden de compra"
-                )
-                
-                submitted = st.form_submit_button("✅ Confirmar Reserva", use_container_width=True)
-                
-                if submitted:
-                    if orden_compra.strip():
-                        new_booking = {
-                            'Fecha': selected_date.strftime('%Y-%m-%d'),
-                            'Hora': st.session_state.selected_slot,
-                            'Proveedor': st.session_state.supplier_name,
-                            'Numero_de_bultos': numero_bultos,
-                            'Orden_de_compra': orden_compra.strip()
-                        }
-                        
-                        with st.spinner("Guardando reserva..."):
-                            success = save_booking_to_excel(new_booking)
-                        
-                        if success:
-                            st.success("✅ Reserva confirmada!")
-                            
-                            # Send email if email is available
-                            if st.session_state.supplier_email:
-                                with st.spinner("Enviando confirmación por email..."):
-                                    email_sent = send_booking_email(
-                                        st.session_state.supplier_email,
-                                        st.session_state.supplier_name,
-                                        new_booking
-                                    )
-                                if email_sent:
-                                    st.success(f"📧 Email de confirmación enviado a: {st.session_state.supplier_email}")
-                                else:
-                                    st.warning("⚠️ Reserva guardada pero error enviando email")
-                            else:
-                                st.warning("⚠️ No se encontró email para enviar confirmación")
-                            
-                            st.balloons()
-                            
-                            # Log off user and clear session
-                            st.info("Cerrando sesión automáticamente...")
-                            st.session_state.authenticated = False
-                            st.session_state.supplier_name = None
-                            st.session_state.supplier_email = None
-                            if 'selected_slot' in st.session_state:
-                                del st.session_state.selected_slot
-                            
-                            # Wait a moment then rerun
-                            import time
-                            time.sleep(2)
+            # Initialize orden de compra list in session state
+            if 'orden_compra_list' not in st.session_state:
+                st.session_state.orden_compra_list = ['']
+            
+            # Date and time info (outside form so it doesn't reset)
+            st.info(f"📅 Fecha: {selected_date}")
+            st.info(f"🕐 Horario: {st.session_state.selected_slot}")
+            
+            # Number of bultos (outside form)
+            numero_bultos = st.number_input(
+                "📦 Número de bultos", 
+                min_value=1, 
+                value=1,
+                help="Cantidad de bultos o paquetes a entregar"
+            )
+            
+            # Multiple Purchase orders section
+            st.write("📋 **Órdenes de compra** *")
+            st.caption("* Al menos una orden de compra es obligatoria")
+            
+            # Display current orden de compra inputs
+            orden_compra_values = []
+            for i, orden in enumerate(st.session_state.orden_compra_list):
+                col1, col2 = st.columns([4, 1])
+                with col1:
+                    orden_value = st.text_input(
+                        f"Orden {i+1}",
+                        value=orden,
+                        placeholder=f"Ej: OC-2024-00{i+1}",
+                        key=f"orden_{i}"
+                    )
+                    orden_compra_values.append(orden_value)
+                with col2:
+                    # Remove button (only show if more than 1 order)
+                    if len(st.session_state.orden_compra_list) > 1:
+                        if st.button("🗑️", key=f"remove_{i}"):
+                            st.session_state.orden_compra_list.pop(i)
                             st.rerun()
+            
+            # Update session state with current values
+            st.session_state.orden_compra_list = orden_compra_values
+            
+            # Add button
+            col1, col2, col3 = st.columns([1, 2, 1])
+            with col2:
+                if st.button("➕ Agregar otra orden", use_container_width=True):
+                    st.session_state.orden_compra_list.append('')
+                    st.rerun()
+            
+            # Confirm button
+            if st.button("✅ Confirmar Reserva", use_container_width=True):
+                # Filter out empty orders and validate
+                valid_orders = [orden.strip() for orden in orden_compra_values if orden.strip()]
+                
+                if valid_orders:
+                    # Join multiple orders with comma
+                    orden_compra_combined = ', '.join(valid_orders)
+                    
+                    new_booking = {
+                        'Fecha': selected_date.strftime('%Y-%m-%d'),
+                        'Hora': st.session_state.selected_slot,
+                        'Proveedor': st.session_state.supplier_name,
+                        'Numero_de_bultos': numero_bultos,
+                        'Orden_de_compra': orden_compra_combined
+                    }
+                    
+                    with st.spinner("Guardando reserva..."):
+                        success = save_booking_to_excel(new_booking)
+                    
+                    if success:
+                        st.success("✅ Reserva confirmada!")
+                        
+                        # Send email if email is available
+                        if st.session_state.supplier_email:
+                            with st.spinner("Enviando confirmación por email..."):
+                                email_sent = send_booking_email(
+                                    st.session_state.supplier_email,
+                                    st.session_state.supplier_name,
+                                    new_booking
+                                )
+                            if email_sent:
+                                st.success(f"📧 Email de confirmación enviado a: {st.session_state.supplier_email}")
+                            else:
+                                st.warning("⚠️ Reserva guardada pero error enviando email")
                         else:
-                            st.error("❌ Error al guardar reserva")
+                            st.warning("⚠️ No se encontró email para enviar confirmación")
+                        
+                        st.balloons()
+                        
+                        # Clear orden de compra list and log off user
+                        st.session_state.orden_compra_list = ['']
+                        st.info("Cerrando sesión automáticamente...")
+                        st.session_state.authenticated = False
+                        st.session_state.supplier_name = None
+                        st.session_state.supplier_email = None
+                        if 'selected_slot' in st.session_state:
+                            del st.session_state.selected_slot
+                        
+                        # Wait a moment then rerun
+                        import time
+                        time.sleep(2)
+                        st.rerun()
                     else:
-                        st.warning("⚠️ Ingrese la orden de compra")
+                        st.error("❌ Error al guardar reserva")
+                else:
+                    st.error("❌ Al menos una orden de compra es obligatoria")
 
 if __name__ == "__main__":
     main()
