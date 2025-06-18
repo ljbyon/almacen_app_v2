@@ -9,7 +9,7 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
-st.set_page_config(page_title="Dismac: Reserva de Entrega de Mercadería", layout="wide")
+st.set_page_config(page_title="Sistema de Reserva de Entregas", layout="wide")
 
 # ─────────────────────────────────────────────────────────────
 # 1. Configuration
@@ -31,11 +31,11 @@ except KeyError as e:
     st.stop()
 
 # ─────────────────────────────────────────────────────────────
-# 2. Excel Download Functions - UPDATED TO INCLUDE GESTION SHEET
+# 2. Excel Download Functions
 # ─────────────────────────────────────────────────────────────
 @st.cache_data(ttl=300)  # Cache for 5 minutes
 def download_excel_to_memory():
-    """Download Excel file from SharePoint to memory - INCLUDES ALL SHEETS"""
+    """Download Excel file from SharePoint to memory"""
     try:
         # Authenticate
         user_credentials = UserCredential(USERNAME, PASSWORD)
@@ -64,33 +64,21 @@ def download_excel_to_memory():
         
         file_content.seek(0)
         
-        # Load all sheets - UPDATED
+        # Load both sheets
         credentials_df = pd.read_excel(file_content, sheet_name="proveedor_credencial", dtype=str)
         reservas_df = pd.read_excel(file_content, sheet_name="proveedor_reservas")
         
-        # Try to load gestion sheet, create empty if doesn't exist - NEW
-        try:
-            gestion_df = pd.read_excel(file_content, sheet_name="proveedor_gestion")
-        except ValueError:
-            # Create empty gestion dataframe with required columns if sheet doesn't exist
-            gestion_df = pd.DataFrame(columns=[
-                'Orden_de_compra', 'Proveedor', 'Numero_de_bultos',
-                'Hora_llegada', 'Hora_inicio_atencion', 'Hora_fin_atencion',
-                'Tiempo_espera', 'Tiempo_atencion', 'Tiempo_total', 'Tiempo_retraso',
-                'numero_de_semana', 'hora_de_reserva'
-            ])
-        
-        return credentials_df, reservas_df, gestion_df
+        return credentials_df, reservas_df
         
     except Exception as e:
         st.error(f"Error descargando Excel: {str(e)}")
-        return None, None, None
+        return None, None
 
 def save_booking_to_excel(new_booking):
-    """Save new booking to Excel file - PRESERVES ALL SHEETS"""
+    """Save new booking to Excel file"""
     try:
-        # Load current data - UPDATED TO LOAD ALL SHEETS
-        credentials_df, reservas_df, gestion_df = download_excel_to_memory()
+        # Load current data
+        credentials_df, reservas_df = download_excel_to_memory()
         
         if reservas_df is None:
             return False
@@ -103,12 +91,11 @@ def save_booking_to_excel(new_booking):
         user_credentials = UserCredential(USERNAME, PASSWORD)
         ctx = ClientContext(SITE_URL).with_credentials(user_credentials)
         
-        # Create Excel file - UPDATED TO SAVE ALL SHEETS
+        # Create Excel file
         excel_buffer = io.BytesIO()
         with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
             credentials_df.to_excel(writer, sheet_name="proveedor_credencial", index=False)
             updated_reservas_df.to_excel(writer, sheet_name="proveedor_reservas", index=False)
-            gestion_df.to_excel(writer, sheet_name="proveedor_gestion", index=False)  # NEW - PRESERVE GESTION SHEET
         
         # Get the file info
         file = ctx.web.get_file_by_id(FILE_ID)
@@ -141,13 +128,13 @@ def send_booking_email(supplier_email, supplier_name, booking_details):
     """Send booking confirmation email"""
     try:
         # Default CC recipients
-        cc_emails = ["leonardo.byon@gmail.com"]
+        cc_emails = ["leonardo.byon@gmail.com", "abc@gmail.com", "cdef@gmail.com"]
         
         # Email content
-        subject = "Confirmación de Reserva para Entrega de Mercadería"
+        subject = "Confirmación de Reserva de Entrega"
         
         body = f"""
-        Hola {supplier_name},
+        Estimado/a {supplier_name},
         
         Su reserva de entrega ha sido confirmada exitosamente.
         
@@ -157,18 +144,18 @@ def send_booking_email(supplier_email, supplier_name, booking_details):
         🕐 Horario: {booking_details['Hora']}
         📦 Número de bultos: {booking_details['Numero_de_bultos']}
         📋 Orden de compra: {booking_details['Orden_de_compra']}
+        👤 Proveedor: {booking_details['Proveedor']}
         
         INSTRUCCIONES:
         ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         • Llegue puntualmente en el horario reservado
-        • Tenga lista el Orden de Compra y cualquier otra documentación relevante
-        • Asegúrese de que los productos y numero de bultos coincidan con el Orden de Compra
-        • Si llega tarde, posiblemente tendra que esperar hasta el proximo cupo disponible del dia
+        • Tenga lista la documentación de la orden de compra
+        • Asegúrese de que los bultos estén correctamente etiquetados
         
         Gracias por utilizar nuestro sistema de reservas.
         
         Saludos cordiales,
-        Equipo de Almacén Dismac
+        Equipo de Almacén
         """
         
         # Create message
@@ -201,7 +188,7 @@ def send_booking_email(supplier_email, supplier_name, booking_details):
 # 4. Time Slot Functions
 # ─────────────────────────────────────────────────────────────
 def generate_time_slots():
-    """Generate available time slots"""
+    """Generate available time slots - showing start time only"""
     # Monday-Friday: 9:00-16:00, Saturday: 9:00-12:00
     weekday_slots = []
     saturday_slots = []
@@ -212,21 +199,13 @@ def generate_time_slots():
     for hour in range(start_hour, end_hour):
         for minute in [0, 30]:
             start_time = f"{hour:02d}:{minute:02d}"
-            end_minute = minute + 30
-            end_hour_calc = hour if end_minute < 60 else hour + 1
-            end_minute = end_minute if end_minute < 60 else 0
-            end_time = f"{end_hour_calc:02d}:{end_minute:02d}"
-            weekday_slots.append(f"{start_time}-{end_time}")
+            weekday_slots.append(start_time)
     
     # Saturday slots (9:00-12:00)
     for hour in range(9, 12):
         for minute in [0, 30]:
             start_time = f"{hour:02d}:{minute:02d}"
-            end_minute = minute + 30
-            end_hour_calc = hour if end_minute < 60 else hour + 1
-            end_minute = end_minute if end_minute < 60 else 0
-            end_time = f"{end_hour_calc:02d}:{end_minute:02d}"
-            saturday_slots.append(f"{start_time}-{end_time}")
+            saturday_slots.append(start_time)
     
     return weekday_slots, saturday_slots
 
@@ -251,11 +230,11 @@ def get_available_slots(selected_date, reservas_df):
     return [slot for slot in all_slots if slot not in booked_slots]
 
 # ─────────────────────────────────────────────────────────────
-# 5. Authentication Function - UPDATED TO USE ALL SHEETS
+# 5. Authentication Function
 # ─────────────────────────────────────────────────────────────
 def authenticate_user(usuario, password):
     """Authenticate user against Excel data and get email"""
-    credentials_df, _, _ = download_excel_to_memory()  # UPDATED - Now returns 3 values
+    credentials_df, _ = download_excel_to_memory()
     
     if credentials_df is None:
         return False, "Error al cargar credenciales", None
@@ -290,20 +269,20 @@ def authenticate_user(usuario, password):
     return False, "Contraseña incorrecta", None
 
 # ─────────────────────────────────────────────────────────────
-# 6. Main App - UPDATED TO USE ALL SHEETS
+# 4. Main App
 # ─────────────────────────────────────────────────────────────
 def main():
-    st.title("🚚 Dismac: Reserva de Entrega de Mercadería")
+    st.title("🚚 Sistema de Reserva de Entregas")
     
-    # Download Excel when app starts - UPDATED
+    # Download Excel when app starts
     with st.spinner("Cargando datos..."):
-        credentials_df, reservas_df, gestion_df = download_excel_to_memory()  # UPDATED - Now gets 3 values
+        credentials_df, reservas_df = download_excel_to_memory()
     
     if credentials_df is None:
         st.error("❌ Error al cargar archivo")
         return
     
-    #st.success(f"✅ Datos cargados: {len(credentials_df)} usuarios, {len(reservas_df)} reservas")
+    st.success(f"✅ Datos cargados: {len(credentials_df)} usuarios, {len(reservas_df)} reservas")
     
     # Session state
     if 'authenticated' not in st.session_state:
@@ -423,6 +402,7 @@ def main():
             
             st.markdown("---")
             st.subheader("📦 Información de Entrega")
+            st.caption("* Campos obligatorios")
             
             with st.form("booking_form"):
                 # Date and time info (full width)
