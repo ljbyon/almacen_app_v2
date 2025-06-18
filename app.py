@@ -142,72 +142,63 @@ def save_booking_to_excel(new_booking):
 def download_pdf_attachment():
     """Download PDF attachment from SharePoint"""
     try:
-        st.info("🔄 Descargando archivo adjunto...")
+        st.info("🔄 Buscando archivo en directorio /my")
         
         # Authenticate
         user_credentials = UserCredential(USERNAME, PASSWORD)
         ctx = ClientContext(SITE_URL).with_credentials(user_credentials)
         
-        # The sharing URL suggests the file is in ljbyon's personal documents
-        # Let's try to find PDF files in the Documents folder
-        possible_paths = [
-            "/personal/ljbyon_dismac_com_bo/Documents/Instrucciones_Entrega.pdf",
-            "/personal/ljbyon_dismac_com_bo/Documents/instrucciones.pdf",
-            "/personal/ljbyon_dismac_com_bo/Documents/delivery_instructions.pdf",
-            "/personal/ljbyon_dismac_com_bo/Documents/Instrucciones.pdf",
-            "/personal/ljbyon_dismac_com_bo/Documents/manual.pdf",
-            "/personal/ljbyon_dismac_com_bo/Documents/guia.pdf"
-        ]
+        # Target filename
+        target_filename = "GUIA_DEL_SELLER_DISMAC_MARKETPLACE_Rev._1.pdf"
         
-        pdf_file = None
-        successful_path = None
-        
-        # Try each possible path
-        for path in possible_paths:
-            try:
-                st.info(f"🔍 Intentando: {path}")
-                pdf_file = ctx.web.get_file_by_server_relative_url(path)
-                ctx.load(pdf_file)
-                ctx.execute_query()
-                successful_path = path
-                st.success(f"✅ Archivo encontrado en: {path}")
-                break
-            except Exception as e:
-                st.info(f"❌ No encontrado en: {path}")
-                continue
-        
-        # If not found in common paths, try to list all PDF files in Documents folder
-        if pdf_file is None:
-            try:
-                st.info("🔍 Buscando todos los archivos PDF en Documents...")
-                folder = ctx.web.get_folder_by_server_relative_url("/personal/ljbyon_dismac_com_bo/Documents")
-                files = folder.files
-                ctx.load(files)
-                ctx.execute_query()
+        # Look specifically in the /my directory
+        try:
+            st.info("🔍 Explorando directorio: /my")
+            folder = ctx.web.get_folder_by_server_relative_url("/my")
+            files = folder.files
+            ctx.load(files)
+            ctx.execute_query()
+            
+            st.info(f"📁 Explorando archivos en /my...")
+            
+            pdf_file = None
+            found_files = []
+            
+            for file in files:
+                filename = file.name
+                found_files.append(filename)
                 
-                pdf_files = []
-                for file in files:
-                    if file.name.lower().endswith('.pdf'):
-                        pdf_files.append(file.name)
+                # Check if this is our target file
+                if filename == target_filename:
+                    pdf_file = file
+                    st.success(f"🎯 ¡Archivo encontrado! /my/{filename}")
+                    break
+            
+            # Show all files found for debugging
+            if found_files:
+                st.info(f"📄 Archivos en /my: {', '.join(found_files[:10])}{'...' if len(found_files) > 10 else ''}")
+            
+            # If target not found, try any PDF in /my
+            if pdf_file is None:
+                pdf_files = [f for f in found_files if f.lower().endswith('.pdf')]
                 
                 if pdf_files:
-                    st.info(f"📄 PDFs encontrados: {', '.join(pdf_files)}")
+                    st.info(f"📄 PDFs disponibles: {', '.join(pdf_files)}")
                     # Use the first PDF found
                     first_pdf = pdf_files[0]
-                    pdf_path = f"/personal/ljbyon_dismac_com_bo/Documents/{first_pdf}"
-                    pdf_file = ctx.web.get_file_by_server_relative_url(pdf_path)
+                    file_path = f"/my/{first_pdf}"
+                    pdf_file = ctx.web.get_file_by_server_relative_url(file_path)
                     ctx.load(pdf_file)
                     ctx.execute_query()
-                    successful_path = pdf_path
-                    st.success(f"✅ Usando primer PDF encontrado: {first_pdf}")
+                    st.success(f"✅ Usando PDF disponible: {first_pdf}")
                 else:
-                    raise Exception("No se encontraron archivos PDF en la carpeta Documents")
-                    
-            except Exception as e:
-                raise Exception(f"No se pudo acceder a la carpeta Documents: {str(e)}")
+                    raise Exception(f"No se encontró {target_filename} ni otros PDFs en /my")
+            
+        except Exception as e:
+            raise Exception(f"No se pudo acceder al directorio /my: {str(e)}")
         
         if pdf_file is None:
-            raise Exception("No se encontró ningún archivo PDF")
+            raise Exception("No se pudo cargar el archivo PDF")
         
         # Download PDF to memory
         pdf_content = io.BytesIO()
@@ -232,9 +223,9 @@ def download_pdf_attachment():
         
         # Get filename
         try:
-            filename = pdf_file.properties.get('Name', 'Instrucciones_Entrega.pdf')
+            filename = pdf_file.properties.get('Name', target_filename)
         except:
-            filename = 'Instrucciones_Entrega.pdf'
+            filename = target_filename
         
         st.success(f"📎 Archivo descargado: {filename} ({len(pdf_data)} bytes)")
         
