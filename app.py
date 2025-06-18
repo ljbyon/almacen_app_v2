@@ -437,8 +437,8 @@ def main():
             # Display current orden de compra inputs
             orden_compra_values = []
             for i, orden in enumerate(st.session_state.orden_compra_list):
-                col1, col2 = st.columns([4, 1])
-                with col1:
+                if len(st.session_state.orden_compra_list) == 1:
+                    # Single order - full width
                     orden_value = st.text_input(
                         f"Orden {i+1}",
                         value=orden,
@@ -446,9 +446,19 @@ def main():
                         key=f"orden_{i}"
                     )
                     orden_compra_values.append(orden_value)
-                with col2:
-                    # Remove button (only show if more than 1 order)
-                    if len(st.session_state.orden_compra_list) > 1:
+                else:
+                    # Multiple orders - use columns for remove button
+                    col1, col2 = st.columns([5, 1])
+                    with col1:
+                        orden_value = st.text_input(
+                            f"Orden {i+1}",
+                            value=orden,
+                            placeholder=f"Ej: OC-2024-00{i+1}",
+                            key=f"orden_{i}"
+                        )
+                        orden_compra_values.append(orden_value)
+                    with col2:
+                        st.write("")  # Empty space for alignment
                         if st.button("🗑️", key=f"remove_{i}"):
                             st.session_state.orden_compra_list.pop(i)
                             st.rerun()
