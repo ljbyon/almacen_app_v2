@@ -8,6 +8,8 @@ from office365.runtime.auth.user_credential import UserCredential
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email import encoders
 
 st.set_page_config(page_title="Dismac: Reserva de Entrega de Mercadería", layout="wide")
 
@@ -137,8 +139,49 @@ def save_booking_to_excel(new_booking):
 # ─────────────────────────────────────────────────────────────
 # 3. Email Functions
 # ─────────────────────────────────────────────────────────────
+def download_pdf_attachment():
+    """Download PDF attachment from SharePoint"""
+    try:
+        # PDF file ID extracted from the SharePoint URL
+        PDF_FILE_ID = "EVmDR1RAdxNAtupBu1uXd7ABk-Qy_zDnx4AvniHfC01vPA"
+        
+        # Authenticate
+        user_credentials = UserCredential(USERNAME, PASSWORD)
+        ctx = ClientContext(SITE_URL).with_credentials(user_credentials)
+        
+        # Get PDF file
+        pdf_file = ctx.web.get_file_by_id(PDF_FILE_ID)
+        ctx.load(pdf_file)
+        ctx.execute_query()
+        
+        # Download PDF to memory
+        pdf_content = io.BytesIO()
+        
+        try:
+            pdf_file.download(pdf_content)
+            ctx.execute_query()
+        except TypeError:
+            try:
+                response = pdf_file.download()
+                ctx.execute_query()
+                pdf_content = io.BytesIO(response.content)
+            except:
+                pdf_file.download_session(pdf_content)
+                ctx.execute_query()
+        
+        pdf_content.seek(0)
+        
+        # Get filename
+        filename = pdf_file.properties.get('Name', 'Instrucciones_Entrega.pdf')
+        
+        return pdf_content.getvalue(), filename
+        
+    except Exception as e:
+        st.warning(f"No se pudo descargar el archivo adjunto: {str(e)}")
+        return None, None
+
 def send_booking_email(supplier_email, supplier_name, booking_details):
-    """Send booking confirmation email"""
+    """Send booking confirmation email with PDF attachment"""
     try:
         # Default CC recipients
         cc_emails = ["leonardo.byon@gmail.com"]
@@ -165,6 +208,8 @@ def send_booking_email(supplier_email, supplier_name, booking_details):
         • Asegúrese de que los productos y numero de bultos coincidan con el Orden de Compra
         • Si llega tarde, posiblemente tendra que esperar hasta el proximo cupo disponible del dia
         
+        📎 Se adjunta documento con instrucciones adicionales.
+        
         Gracias por utilizar nuestro sistema de reservas.
         
         Saludos cordiales,
@@ -178,7 +223,20 @@ def send_booking_email(supplier_email, supplier_name, booking_details):
         msg['Cc'] = ', '.join(cc_emails)
         msg['Subject'] = subject
         
+        # Add body
         msg.attach(MIMEText(body, 'plain', 'utf-8'))
+        
+        # Download and attach PDF
+        pdf_data, pdf_filename = download_pdf_attachment()
+        if pdf_data:
+            attachment = MIMEBase('application', 'octet-stream')
+            attachment.set_payload(pdf_data)
+            encoders.encode_base64(attachment)
+            attachment.add_header(
+                'Content-Disposition',
+                f'attachment; filename= {pdf_filename}'
+            )
+            msg.attach(attachment)
         
         # Send email
         server = smtplib.SMTP(EMAIL_HOST, EMAIL_PORT)
