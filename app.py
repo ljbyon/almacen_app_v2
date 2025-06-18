@@ -145,14 +145,49 @@ def download_pdf_attachment():
         # PDF file ID extracted from the SharePoint URL
         PDF_FILE_ID = "EVmDR1RAdxNAtupBu1uXd7ABk-Qy_zDnx4AvniHfC01vPA"
         
+        st.info("🔄 Descargando archivo adjunto...")
+        
         # Authenticate
         user_credentials = UserCredential(USERNAME, PASSWORD)
         ctx = ClientContext(SITE_URL).with_credentials(user_credentials)
         
-        # Get PDF file
-        pdf_file = ctx.web.get_file_by_id(PDF_FILE_ID)
-        ctx.load(pdf_file)
-        ctx.execute_query()
+        # Try method 1: Using file ID
+        try:
+            pdf_file = ctx.web.get_file_by_id(PDF_FILE_ID)
+            ctx.load(pdf_file)
+            ctx.execute_query()
+            
+            st.info("✅ Archivo encontrado por ID")
+            
+        except Exception as e1:
+            st.warning(f"⚠️ Error con File ID: {e1}")
+            
+            # Try method 2: Using file path (alternative approach)
+            try:
+                # Try common paths where the PDF might be
+                possible_paths = [
+                    "/personal/ljbyon_dismac_com_bo/Documents/Instrucciones_Entrega.pdf",
+                    "/personal/ljbyon_dismac_com_bo/Documents/instrucciones.pdf",
+                    "/personal/ljbyon_dismac_com_bo/Documents/delivery_instructions.pdf"
+                ]
+                
+                pdf_file = None
+                for path in possible_paths:
+                    try:
+                        pdf_file = ctx.web.get_file_by_server_relative_url(path)
+                        ctx.load(pdf_file)
+                        ctx.execute_query()
+                        st.info(f"✅ Archivo encontrado en: {path}")
+                        break
+                    except:
+                        continue
+                
+                if pdf_file is None:
+                    raise Exception("No se encontró el archivo PDF en rutas conocidas")
+                        
+            except Exception as e2:
+                st.warning(f"⚠️ Error con rutas: {e2}")
+                raise Exception(f"No se pudo encontrar el archivo PDF. Error ID: {e1}, Error Path: {e2}")
         
         # Download PDF to memory
         pdf_content = io.BytesIO()
@@ -160,24 +195,34 @@ def download_pdf_attachment():
         try:
             pdf_file.download(pdf_content)
             ctx.execute_query()
+            st.info("✅ Descarga método 1 exitosa")
         except TypeError:
             try:
                 response = pdf_file.download()
                 ctx.execute_query()
                 pdf_content = io.BytesIO(response.content)
+                st.info("✅ Descarga método 2 exitosa")
             except:
                 pdf_file.download_session(pdf_content)
                 ctx.execute_query()
+                st.info("✅ Descarga método 3 exitosa")
         
         pdf_content.seek(0)
+        pdf_data = pdf_content.getvalue()
         
         # Get filename
-        filename = pdf_file.properties.get('Name', 'Instrucciones_Entrega.pdf')
+        try:
+            filename = pdf_file.properties.get('Name', 'Instrucciones_Entrega.pdf')
+        except:
+            filename = 'Instrucciones_Entrega.pdf'
         
-        return pdf_content.getvalue(), filename
+        st.success(f"📎 Archivo descargado: {filename} ({len(pdf_data)} bytes)")
+        
+        return pdf_data, filename
         
     except Exception as e:
-        st.warning(f"No se pudo descargar el archivo adjunto: {str(e)}")
+        error_msg = f"No se pudo descargar el archivo adjunto: {str(e)}"
+        st.error(error_msg)
         return None, None
 
 def send_booking_email(supplier_email, supplier_name, booking_details):
