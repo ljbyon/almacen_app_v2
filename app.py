@@ -142,52 +142,72 @@ def save_booking_to_excel(new_booking):
 def download_pdf_attachment():
     """Download PDF attachment from SharePoint"""
     try:
-        # PDF file ID extracted from the SharePoint URL
-        PDF_FILE_ID = "EVmDR1RAdxNAtupBu1uXd7ABk-Qy_zDnx4AvniHfC01vPA"
-        
         st.info("🔄 Descargando archivo adjunto...")
         
         # Authenticate
         user_credentials = UserCredential(USERNAME, PASSWORD)
         ctx = ClientContext(SITE_URL).with_credentials(user_credentials)
         
-        # Try method 1: Using file ID
-        try:
-            pdf_file = ctx.web.get_file_by_id(PDF_FILE_ID)
-            ctx.load(pdf_file)
-            ctx.execute_query()
-            
-            st.info("✅ Archivo encontrado por ID")
-            
-        except Exception as e1:
-            st.warning(f"⚠️ Error con File ID: {e1}")
-            
-            # Try method 2: Using file path (alternative approach)
+        # The sharing URL suggests the file is in ljbyon's personal documents
+        # Let's try to find PDF files in the Documents folder
+        possible_paths = [
+            "/personal/ljbyon_dismac_com_bo/Documents/Instrucciones_Entrega.pdf",
+            "/personal/ljbyon_dismac_com_bo/Documents/instrucciones.pdf",
+            "/personal/ljbyon_dismac_com_bo/Documents/delivery_instructions.pdf",
+            "/personal/ljbyon_dismac_com_bo/Documents/Instrucciones.pdf",
+            "/personal/ljbyon_dismac_com_bo/Documents/manual.pdf",
+            "/personal/ljbyon_dismac_com_bo/Documents/guia.pdf"
+        ]
+        
+        pdf_file = None
+        successful_path = None
+        
+        # Try each possible path
+        for path in possible_paths:
             try:
-                # Try common paths where the PDF might be
-                possible_paths = [
-                    "/personal/ljbyon_dismac_com_bo/Documents/Instrucciones_Entrega.pdf",
-                    "/personal/ljbyon_dismac_com_bo/Documents/instrucciones.pdf",
-                    "/personal/ljbyon_dismac_com_bo/Documents/delivery_instructions.pdf"
-                ]
+                st.info(f"🔍 Intentando: {path}")
+                pdf_file = ctx.web.get_file_by_server_relative_url(path)
+                ctx.load(pdf_file)
+                ctx.execute_query()
+                successful_path = path
+                st.success(f"✅ Archivo encontrado en: {path}")
+                break
+            except Exception as e:
+                st.info(f"❌ No encontrado en: {path}")
+                continue
+        
+        # If not found in common paths, try to list all PDF files in Documents folder
+        if pdf_file is None:
+            try:
+                st.info("🔍 Buscando todos los archivos PDF en Documents...")
+                folder = ctx.web.get_folder_by_server_relative_url("/personal/ljbyon_dismac_com_bo/Documents")
+                files = folder.files
+                ctx.load(files)
+                ctx.execute_query()
                 
-                pdf_file = None
-                for path in possible_paths:
-                    try:
-                        pdf_file = ctx.web.get_file_by_server_relative_url(path)
-                        ctx.load(pdf_file)
-                        ctx.execute_query()
-                        st.info(f"✅ Archivo encontrado en: {path}")
-                        break
-                    except:
-                        continue
+                pdf_files = []
+                for file in files:
+                    if file.name.lower().endswith('.pdf'):
+                        pdf_files.append(file.name)
                 
-                if pdf_file is None:
-                    raise Exception("No se encontró el archivo PDF en rutas conocidas")
-                        
-            except Exception as e2:
-                st.warning(f"⚠️ Error con rutas: {e2}")
-                raise Exception(f"No se pudo encontrar el archivo PDF. Error ID: {e1}, Error Path: {e2}")
+                if pdf_files:
+                    st.info(f"📄 PDFs encontrados: {', '.join(pdf_files)}")
+                    # Use the first PDF found
+                    first_pdf = pdf_files[0]
+                    pdf_path = f"/personal/ljbyon_dismac_com_bo/Documents/{first_pdf}"
+                    pdf_file = ctx.web.get_file_by_server_relative_url(pdf_path)
+                    ctx.load(pdf_file)
+                    ctx.execute_query()
+                    successful_path = pdf_path
+                    st.success(f"✅ Usando primer PDF encontrado: {first_pdf}")
+                else:
+                    raise Exception("No se encontraron archivos PDF en la carpeta Documents")
+                    
+            except Exception as e:
+                raise Exception(f"No se pudo acceder a la carpeta Documents: {str(e)}")
+        
+        if pdf_file is None:
+            raise Exception("No se encontró ningún archivo PDF")
         
         # Download PDF to memory
         pdf_content = io.BytesIO()
@@ -195,17 +215,17 @@ def download_pdf_attachment():
         try:
             pdf_file.download(pdf_content)
             ctx.execute_query()
-            st.info("✅ Descarga método 1 exitosa")
+            st.info("✅ Descarga exitosa")
         except TypeError:
             try:
                 response = pdf_file.download()
                 ctx.execute_query()
                 pdf_content = io.BytesIO(response.content)
-                st.info("✅ Descarga método 2 exitosa")
+                st.info("✅ Descarga alternativa exitosa")
             except:
                 pdf_file.download_session(pdf_content)
                 ctx.execute_query()
-                st.info("✅ Descarga método 3 exitosa")
+                st.info("✅ Descarga por sesión exitosa")
         
         pdf_content.seek(0)
         pdf_data = pdf_content.getvalue()
