@@ -448,6 +448,7 @@ def main():
         
         # Date selection
         st.subheader("📅 Seleccionar Fecha")
+        st.markdown('<p style="color: red; font-size: 14px; margin-top: -10px;">Le rogamos seleccionar la fecha y el horario con atención, ya que, una vez confirmados, no podrán ser modificados ni cancelados.</p>', unsafe_allow_html=True)
         today = datetime.now().date()
         max_date = today + timedelta(days=30)
         
@@ -537,7 +538,6 @@ def main():
             
             # Multiple Purchase orders section
             st.write("📋 **Órdenes de compra** *")
-            st.caption("* Al menos una orden de compra es obligatoria")
             
             # Display current orden de compra inputs
             orden_compra_values = []
