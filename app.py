@@ -242,8 +242,8 @@ def send_booking_email(supplier_email, supplier_name, booking_details, supplier_
     """Send booking confirmation email with PDF attachment"""
     try:
         # Default CC recipients (hard-coded) - ALWAYS INCLUDE marketplace@dismac.com.bo
-        default_cc_emails = ["marketplace@dismac.com.bo"]
-        
+        #default_cc_emails = ["marketplace@dismac.com.bo"]
+        default_cc_emails = [""]
         # Combine default CC with supplier-specific CC emails
         cc_emails = default_cc_emails.copy()
         if supplier_cc_emails:
