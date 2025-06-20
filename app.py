@@ -238,22 +238,18 @@ def download_pdf_attachment():
         st.warning(f"No se pudo descargar el archivo adjunto: {str(e)}")
         return None, None
 
-def send_booking_email(supplier_email, supplier_name, booking_details, supplier_cc_emails=None):
+def send_booking_email(supplier_email, supplier_name, booking_details):
     """Send booking confirmation email with PDF attachment"""
     try:
-        # Default CC recipients (hard-coded) - ALWAYS INCLUDE marketplace@dismac.com.bo
-        #default_cc_emails = ["marketplace@dismac.com.bo"]
-        default_cc_emails = [""]
-        # Combine default CC with supplier-specific CC emails
-        cc_emails = default_cc_emails.copy()
-        if supplier_cc_emails:
-            # Add supplier-specific CC emails, avoiding duplicates
-            for email in supplier_cc_emails:
-                if email not in cc_emails:
-                    cc_emails.append(email)
+        # Default CC recipients
+        cc_emails = ["leonardo.byon@gmail.com"]
         
         # Email content
         subject = "Confirmación de Reserva para Entrega de Mercadería"
+        
+        # Format dates for email display
+        display_fecha = booking_details['Fecha'].split(' ')[0]  # Remove time part for display
+        display_hora = booking_details['Hora'].rsplit(':', 1)[0]  # Remove seconds for display
         
         body = f"""
         Hola {supplier_name},
@@ -262,8 +258,8 @@ def send_booking_email(supplier_email, supplier_name, booking_details, supplier_
         
         DETALLES DE LA RESERVA:
         ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        📅 Fecha: {booking_details['Fecha']}
-        🕐 Horario: {booking_details['Hora']}
+        📅 Fecha: {display_fecha}
+        🕐 Horario: {display_hora}
         📦 Número de bultos: {booking_details['Numero_de_bultos']}
         📋 Orden de compra: {booking_details['Orden_de_compra']}
         
@@ -295,11 +291,7 @@ def send_booking_email(supplier_email, supplier_name, booking_details, supplier_
         msg = MIMEMultipart()
         msg['From'] = EMAIL_USER
         msg['To'] = supplier_email
-        
-        # Set CC header only if there are CC recipients
-        if cc_emails:
-            msg['Cc'] = ', '.join(cc_emails)
-        
+        msg['Cc'] = ', '.join(cc_emails)
         msg['Subject'] = subject
         
         # Add body
@@ -322,7 +314,7 @@ def send_booking_email(supplier_email, supplier_name, booking_details, supplier_
         server.starttls()
         server.login(EMAIL_USER, EMAIL_PASSWORD)
         
-        # Send to supplier + all CC recipients
+        # Send to supplier + CC recipients
         all_recipients = [supplier_email] + cc_emails
         text = msg.as_string()
         server.sendmail(EMAIL_USER, all_recipients, text)
@@ -418,10 +410,13 @@ def authenticate_user(usuario, password):
         cc_emails = []
         try:
             cc_data = user_row.iloc[0]['cc']
+            st.info(f"📋 CC data from Excel: '{cc_data}'")
             if str(cc_data) != 'nan' and cc_data is not None:
                 # Parse semicolon-separated emails
                 cc_emails = [email.strip() for email in str(cc_data).split(';') if email.strip()]
+                st.info(f"📧 Parsed CC emails: {cc_emails}")
         except Exception as e:
+            st.warning(f"⚠️ Error parsing CC emails: {e}")
             cc_emails = []
         
         return True, "Autenticación exitosa", email, cc_emails
@@ -435,7 +430,7 @@ def main():
     st.title("🚚 Dismac: Reserva de Entrega de Mercadería")
     
     # Download Excel when app starts - UPDATED
-    with st.spinner("Actualizando base de datos..."):
+    with st.spinner("Cargando datos..."):
         credentials_df, reservas_df, gestion_df = download_excel_to_memory()  # UPDATED - Now gets 3 values
     
     if credentials_df is None:
@@ -522,8 +517,18 @@ def main():
             all_slots = weekday_slots
         
         # Get booked slots for this date
-        date_str = selected_date.strftime('%Y-%m-%d')
-        booked_slots = reservas_df[reservas_df['Fecha'] == date_str]['Hora'].tolist()
+        date_str = selected_date.strftime('%Y-%m-%d') + ' 00:00:00'
+        booked_reservas = reservas_df[reservas_df['Fecha'] == date_str]['Hora'].tolist()
+        
+        # Convert booked slots from "9:00:00" format to "09:00" format for comparison
+        booked_slots = []
+        for booked_hora in booked_reservas:
+            if ':' in str(booked_hora):
+                parts = str(booked_hora).split(':')
+                formatted_slot = f"{int(parts[0]):02d}:{parts[1]}"
+                booked_slots.append(formatted_slot)
+            else:
+                booked_slots.append(str(booked_hora))
         
         if not all_slots:
             st.warning("❌ No hay horarios para esta fecha")
@@ -653,14 +658,10 @@ def main():
                                 email_sent = send_booking_email(
                                     st.session_state.supplier_email,
                                     st.session_state.supplier_name,
-                                    new_booking,
-                                    st.session_state.supplier_cc_emails  # Pass the CC emails from session state
+                                    new_booking
                                 )
                             if email_sent:
                                 st.success(f"📧 Email de confirmación enviado a: {st.session_state.supplier_email}")
-                                # Only show supplier-specific CC emails in notification
-                                if st.session_state.supplier_cc_emails:
-                                    st.success(f"📧 CC enviado a: {', '.join(st.session_state.supplier_cc_emails)}")
                             else:
                                 st.warning("⚠️ Reserva guardada pero error enviando email")
                         else:
@@ -680,7 +681,7 @@ def main():
                         
                         # Wait a moment then rerun
                         import time
-                        time.sleep(10)
+                        time.sleep(2)
                         st.rerun()
                     else:
                         st.error("❌ Error al guardar reserva")
