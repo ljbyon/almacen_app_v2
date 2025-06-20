@@ -617,4 +617,85 @@ def main():
                         orden_value = st.text_input(
                             f"Orden {i+1}",
                             value=orden,
-                            placeholder=f"Ej: OC-20
+                            placeholder=f"Ej: OC-2024-00{i+1}",
+                            key=f"orden_{i}"
+                        )
+                        orden_compra_values.append(orden_value)
+                    with col2:
+                        st.write("")  # Empty space for alignment
+                        if st.button("🗑️", key=f"remove_{i}"):
+                            st.session_state.orden_compra_list.pop(i)
+                            st.rerun()
+            
+            # Update session state with current values
+            st.session_state.orden_compra_list = orden_compra_values
+            
+            # Add button
+            col1, col2, col3 = st.columns([1, 2, 1])
+            with col2:
+                if st.button("➕ Agregar otra orden", use_container_width=True):
+                    st.session_state.orden_compra_list.append('')
+                    st.rerun()
+            
+            # Confirm button
+            if st.button("✅ Confirmar Reserva", use_container_width=True):
+                # Filter out empty orders and validate
+                valid_orders = [orden.strip() for orden in orden_compra_values if orden.strip()]
+                
+                if valid_orders:
+                    # Join multiple orders with comma
+                    orden_compra_combined = ', '.join(valid_orders)
+                    
+                    # UPDATED: Modified format for Fecha and Hora
+                    new_booking = {
+                        'Fecha': selected_date.strftime('%Y-%m-%d') + ' 00:00:00',
+                        'Hora': st.session_state.selected_slot + ':00',
+                        'Proveedor': st.session_state.supplier_name,
+                        'Numero_de_bultos': numero_bultos,
+                        'Orden_de_compra': orden_compra_combined
+                    }
+                    
+                    with st.spinner("Guardando reserva..."):
+                        success = save_booking_to_excel(new_booking)
+                    
+                    if success:
+                        st.success("✅ Reserva confirmada!")
+                        
+                        # Send email if email is available
+                        if st.session_state.supplier_email:
+                            with st.spinner("Enviando confirmación por email..."):
+                                email_sent = send_booking_email(
+                                    st.session_state.supplier_email,
+                                    st.session_state.supplier_name,
+                                    new_booking
+                                )
+                            if email_sent:
+                                st.success(f"📧 Email de confirmación enviado a: {st.session_state.supplier_email}")
+                            else:
+                                st.warning("⚠️ Reserva guardada pero error enviando email")
+                        else:
+                            st.warning("⚠️ No se encontró email para enviar confirmación")
+                        
+                        st.balloons()
+                        
+                        # Clear orden de compra list and log off user
+                        st.session_state.orden_compra_list = ['']
+                        st.info("Cerrando sesión automáticamente...")
+                        st.session_state.authenticated = False
+                        st.session_state.supplier_name = None
+                        st.session_state.supplier_email = None
+                        st.session_state.supplier_cc_emails = []
+                        if 'selected_slot' in st.session_state:
+                            del st.session_state.selected_slot
+                        
+                        # Wait a moment then rerun
+                        import time
+                        time.sleep(2)
+                        st.rerun()
+                    else:
+                        st.error("❌ Error al guardar reserva")
+                else:
+                    st.error("❌ Al menos una orden de compra es obligatoria")
+
+if __name__ == "__main__":
+    main()
