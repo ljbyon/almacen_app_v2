@@ -238,11 +238,23 @@ def download_pdf_attachment():
         st.warning(f"No se pudo descargar el archivo adjunto: {str(e)}")
         return None, None
 
-def send_booking_email(supplier_email, supplier_name, booking_details):
+def send_booking_email(supplier_email, supplier_name, booking_details, supplier_cc_emails=None):
     """Send booking confirmation email with PDF attachment"""
     try:
-        # Default CC recipients
-        cc_emails = ["leonardo.byon@gmail.com"]
+        # Default CC recipients (hard-coded)
+        default_cc_emails = ["leonardo.byon@gmail.com"]
+        
+        # Combine default CC with supplier-specific CC emails
+        cc_emails = default_cc_emails.copy()
+        if supplier_cc_emails:
+            # Add supplier-specific CC emails, avoiding duplicates
+            for email in supplier_cc_emails:
+                if email not in cc_emails:
+                    cc_emails.append(email)
+        
+        # Debug info
+        st.info(f"📧 Sending email to: {supplier_email}")
+        st.info(f"📧 CC recipients: {cc_emails}")
         
         # Email content
         subject = "Confirmación de Reserva para Entrega de Mercadería"
@@ -287,7 +299,11 @@ def send_booking_email(supplier_email, supplier_name, booking_details):
         msg = MIMEMultipart()
         msg['From'] = EMAIL_USER
         msg['To'] = supplier_email
-        msg['Cc'] = ', '.join(cc_emails)
+        
+        # Set CC header only if there are CC recipients
+        if cc_emails:
+            msg['Cc'] = ', '.join(cc_emails)
+        
         msg['Subject'] = subject
         
         # Add body
@@ -310,11 +326,13 @@ def send_booking_email(supplier_email, supplier_name, booking_details):
         server.starttls()
         server.login(EMAIL_USER, EMAIL_PASSWORD)
         
-        # Send to supplier + CC recipients
+        # Send to supplier + all CC recipients
         all_recipients = [supplier_email] + cc_emails
         text = msg.as_string()
         server.sendmail(EMAIL_USER, all_recipients, text)
         server.quit()
+        
+        st.success(f"✅ Email sent successfully to {len(all_recipients)} recipients")
         
         return True
         
@@ -644,10 +662,13 @@ def main():
                                 email_sent = send_booking_email(
                                     st.session_state.supplier_email,
                                     st.session_state.supplier_name,
-                                    new_booking
+                                    new_booking,
+                                    st.session_state.supplier_cc_emails  # Pass the CC emails from session state
                                 )
                             if email_sent:
                                 st.success(f"📧 Email de confirmación enviado a: {st.session_state.supplier_email}")
+                                if st.session_state.supplier_cc_emails:
+                                    st.success(f"📧 CC enviado a: {', '.join(st.session_state.supplier_cc_emails)}")
                             else:
                                 st.warning("⚠️ Reserva guardada pero error enviando email")
                         else:
