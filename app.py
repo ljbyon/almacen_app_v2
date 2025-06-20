@@ -238,11 +238,19 @@ def download_pdf_attachment():
         st.warning(f"No se pudo descargar el archivo adjunto: {str(e)}")
         return None, None
 
-def send_booking_email(supplier_email, supplier_name, booking_details):
+def send_booking_email(supplier_email, supplier_name, booking_details, cc_emails=None):
     """Send booking confirmation email with PDF attachment"""
     try:
-        # Default CC recipients
-        cc_emails = ["leonardo.byon@gmail.com"]
+        # Use provided CC emails or default
+        if cc_emails is None or len(cc_emails) == 0:
+            cc_emails = ["leonardo.byon@gmail.com"]
+        else:
+            # Add default email to the CC list if not already present
+            if "leonardo.byon@gmail.com" not in cc_emails:
+                cc_emails = cc_emails + ["leonardo.byon@gmail.com"]
+        
+        st.info(f"📧 Sending email to: {supplier_email}")
+        st.info(f"📧 CC recipients: {cc_emails}")
         
         # Email content
         subject = "Confirmación de Reserva para Entrega de Mercadería"
@@ -316,10 +324,12 @@ def send_booking_email(supplier_email, supplier_name, booking_details):
         
         # Send to supplier + CC recipients
         all_recipients = [supplier_email] + cc_emails
+        st.info(f"📧 All recipients (TO + CC): {all_recipients}")
         text = msg.as_string()
         server.sendmail(EMAIL_USER, all_recipients, text)
         server.quit()
         
+        st.success(f"✅ Email sent successfully to {len(all_recipients)} recipients")
         return True
         
     except Exception as e:
@@ -411,10 +421,12 @@ def authenticate_user(usuario, password):
         try:
             cc_data = user_row.iloc[0]['cc']
             st.info(f"📋 CC data from Excel: '{cc_data}'")
-            if str(cc_data) != 'nan' and cc_data is not None:
+            if str(cc_data) != 'nan' and cc_data is not None and str(cc_data).strip():
                 # Parse semicolon-separated emails
                 cc_emails = [email.strip() for email in str(cc_data).split(';') if email.strip()]
                 st.info(f"📧 Parsed CC emails: {cc_emails}")
+            else:
+                st.info("📧 No CC emails found in Excel data")
         except Exception as e:
             st.warning(f"⚠️ Error parsing CC emails: {e}")
             cc_emails = []
@@ -667,10 +679,14 @@ def main():
                                 email_sent = send_booking_email(
                                     st.session_state.supplier_email,
                                     st.session_state.supplier_name,
-                                    new_booking
+                                    new_booking,
+                                    st.session_state.supplier_cc_emails  # Pass CC emails from session
                                 )
                             if email_sent:
                                 st.success(f"📧 Email de confirmación enviado a: {st.session_state.supplier_email}")
+                                if st.session_state.supplier_cc_emails:
+                                    st.success(f"📧 CC enviado a: {', '.join(st.session_state.supplier_cc_emails)}")
+                                st.success(f"📧 CC enviado a: leonardo.byon@gmail.com")
                             else:
                                 st.warning("⚠️ Reserva guardada pero error enviando email")
                         else:
