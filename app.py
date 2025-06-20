@@ -406,10 +406,13 @@ def authenticate_user(usuario, password):
         cc_emails = []
         try:
             cc_data = user_row.iloc[0]['cc']
+            st.info(f"📋 CC data from Excel: '{cc_data}'")
             if str(cc_data) != 'nan' and cc_data is not None:
                 # Parse semicolon-separated emails
                 cc_emails = [email.strip() for email in str(cc_data).split(';') if email.strip()]
-        except:
+                st.info(f"📧 Parsed CC emails: {cc_emails}")
+        except Exception as e:
+            st.warning(f"⚠️ Error parsing CC emails: {e}")
             cc_emails = []
         
         return True, "Autenticación exitosa", email, cc_emails
