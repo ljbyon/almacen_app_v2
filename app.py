@@ -680,7 +680,7 @@ def main():
                         
                         # Wait a moment then rerun
                         import time
-                        time.sleep(2)
+                        time.sleep(10)
                         st.rerun()
                     else:
                         st.error("❌ Error al guardar reserva")
