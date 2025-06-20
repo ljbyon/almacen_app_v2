@@ -241,8 +241,8 @@ def download_pdf_attachment():
 def send_booking_email(supplier_email, supplier_name, booking_details, supplier_cc_emails=None):
     """Send booking confirmation email with PDF attachment"""
     try:
-        # Default CC recipients (hard-coded)
-        default_cc_emails = ["leonardo.byon@gmail.com"]
+        # Default CC recipients (hard-coded) - ALWAYS INCLUDE marketplace@dismac.com.bo
+        default_cc_emails = ["marketplace@dismac.com.bo"]
         
         # Combine default CC with supplier-specific CC emails
         cc_emails = default_cc_emails.copy()
@@ -251,10 +251,6 @@ def send_booking_email(supplier_email, supplier_name, booking_details, supplier_
             for email in supplier_cc_emails:
                 if email not in cc_emails:
                     cc_emails.append(email)
-        
-        # Debug info
-        st.info(f"📧 Sending email to: {supplier_email}")
-        st.info(f"📧 CC recipients: {cc_emails}")
         
         # Email content
         subject = "Confirmación de Reserva para Entrega de Mercadería"
@@ -331,8 +327,6 @@ def send_booking_email(supplier_email, supplier_name, booking_details, supplier_
         text = msg.as_string()
         server.sendmail(EMAIL_USER, all_recipients, text)
         server.quit()
-        
-        st.success(f"✅ Email sent successfully to {len(all_recipients)} recipients")
         
         return True
         
@@ -424,13 +418,10 @@ def authenticate_user(usuario, password):
         cc_emails = []
         try:
             cc_data = user_row.iloc[0]['cc']
-            st.info(f"📋 CC data from Excel: '{cc_data}'")
             if str(cc_data) != 'nan' and cc_data is not None:
                 # Parse semicolon-separated emails
                 cc_emails = [email.strip() for email in str(cc_data).split(';') if email.strip()]
-                st.info(f"📧 Parsed CC emails: {cc_emails}")
         except Exception as e:
-            st.warning(f"⚠️ Error parsing CC emails: {e}")
             cc_emails = []
         
         return True, "Autenticación exitosa", email, cc_emails
@@ -667,8 +658,13 @@ def main():
                                 )
                             if email_sent:
                                 st.success(f"📧 Email de confirmación enviado a: {st.session_state.supplier_email}")
+                                # Build CC list for display (always includes defaults + supplier-specific)
+                                all_cc_emails = ["marketplace@dismac.com.bo"]
                                 if st.session_state.supplier_cc_emails:
-                                    st.success(f"📧 CC enviado a: {', '.join(st.session_state.supplier_cc_emails)}")
+                                    for email in st.session_state.supplier_cc_emails:
+                                        if email not in all_cc_emails:
+                                            all_cc_emails.append(email)
+                                st.success(f"📧 CC enviado a: {', '.join(all_cc_emails)}")
                             else:
                                 st.warning("⚠️ Reserva guardada pero error enviando email")
                         else:
