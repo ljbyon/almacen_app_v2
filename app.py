@@ -249,9 +249,6 @@ def send_booking_email(supplier_email, supplier_name, booking_details, cc_emails
             if "leonardo.byon@gmail.com" not in cc_emails:
                 cc_emails = cc_emails + ["leonardo.byon@gmail.com"]
         
-        st.info(f"📧 Sending email to: {supplier_email}")
-        st.info(f"📧 CC recipients: {cc_emails}")
-        
         # Email content
         subject = "Confirmación de Reserva para Entrega de Mercadería"
         
@@ -324,17 +321,15 @@ def send_booking_email(supplier_email, supplier_name, booking_details, cc_emails
         
         # Send to supplier + CC recipients
         all_recipients = [supplier_email] + cc_emails
-        st.info(f"📧 All recipients (TO + CC): {all_recipients}")
         text = msg.as_string()
         server.sendmail(EMAIL_USER, all_recipients, text)
         server.quit()
         
-        st.success(f"✅ Email sent successfully to {len(all_recipients)} recipients")
-        return True
+        return True, cc_emails
         
     except Exception as e:
         st.error(f"Error enviando email: {str(e)}")
-        return False
+        return False, []
 
 # ─────────────────────────────────────────────────────────────
 # 4. Time Slot Functions
@@ -420,15 +415,10 @@ def authenticate_user(usuario, password):
         cc_emails = []
         try:
             cc_data = user_row.iloc[0]['cc']
-            st.info(f"📋 CC data from Excel: '{cc_data}'")
             if str(cc_data) != 'nan' and cc_data is not None and str(cc_data).strip():
                 # Parse semicolon-separated emails
                 cc_emails = [email.strip() for email in str(cc_data).split(';') if email.strip()]
-                st.info(f"📧 Parsed CC emails: {cc_emails}")
-            else:
-                st.info("📧 No CC emails found in Excel data")
         except Exception as e:
-            st.warning(f"⚠️ Error parsing CC emails: {e}")
             cc_emails = []
         
         return True, "Autenticación exitosa", email, cc_emails
@@ -676,7 +666,7 @@ def main():
                         # Send email if email is available
                         if st.session_state.supplier_email:
                             with st.spinner("Enviando confirmación por email..."):
-                                email_sent = send_booking_email(
+                                email_sent, actual_cc_emails = send_booking_email(
                                     st.session_state.supplier_email,
                                     st.session_state.supplier_name,
                                     new_booking,
@@ -684,9 +674,8 @@ def main():
                                 )
                             if email_sent:
                                 st.success(f"📧 Email de confirmación enviado a: {st.session_state.supplier_email}")
-                                if st.session_state.supplier_cc_emails:
-                                    st.success(f"📧 CC enviado a: {', '.join(st.session_state.supplier_cc_emails)}")
-                                st.success(f"📧 CC enviado a: leonardo.byon@gmail.com")
+                                if actual_cc_emails:
+                                    st.success(f"📧 CC enviado a: {', '.join(actual_cc_emails)}")
                             else:
                                 st.warning("⚠️ Reserva guardada pero error enviando email")
                         else:
