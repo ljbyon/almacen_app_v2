@@ -45,6 +45,9 @@ def download_excel_to_memory():
         
         # Get file
         file = ctx.web.get_file_by_id(FILE_ID)
+        if file is None:
+            raise Exception("File object is None - FILE_ID may be incorrect")
+            
         ctx.load(file)
         ctx.execute_query()
         
@@ -55,14 +58,19 @@ def download_excel_to_memory():
         try:
             file.download(file_content)
             ctx.execute_query()
-        except TypeError:
+        except TypeError as e:
             try:
                 response = file.download()
+                if response is None:
+                    raise Exception("Download response is None")
                 ctx.execute_query()
                 file_content = io.BytesIO(response.content)
-            except:
-                file.download_session(file_content)
-                ctx.execute_query()
+            except Exception as e2:
+                try:
+                    file.download_session(file_content)
+                    ctx.execute_query()
+                except Exception as e3:
+                    raise Exception(f"All download methods failed: {e}, {e2}, {e3}")
         
         file_content.seek(0)
         
@@ -86,6 +94,9 @@ def download_excel_to_memory():
         
     except Exception as e:
         st.error(f"Error descargando Excel: {str(e)}")
+        st.error(f"SITE_URL: {SITE_URL}")
+        st.error(f"FILE_ID: {FILE_ID}")
+        st.error(f"Error type: {type(e).__name__}")
         return None, None, None
 
 def save_booking_to_excel(new_booking):
