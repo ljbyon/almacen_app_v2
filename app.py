@@ -35,7 +35,7 @@ except KeyError as e:
 # ─────────────────────────────────────────────────────────────
 # 2. Excel Download Functions - UPDATED TO INCLUDE GESTION SHEET
 # ─────────────────────────────────────────────────────────────
-@st.cache_data(ttl=60)  # Reduced cache time to 1 minute
+@st.cache_data(ttl=300)  # Back to 5 minutes - only clear when needed
 def download_excel_to_memory():
     """Download Excel file from SharePoint to memory - INCLUDES ALL SHEETS"""
     try:
@@ -102,10 +102,7 @@ def download_excel_to_memory():
 def save_booking_to_excel(new_booking):
     """Save new booking to Excel file - PRESERVES ALL SHEETS"""
     try:
-        # Clear cache before loading to get fresh data
-        download_excel_to_memory.clear()
-        
-        # Load current data - UPDATED TO LOAD ALL SHEETS
+        # Load current data
         credentials_df, reservas_df, gestion_df = download_excel_to_memory()
         
         if reservas_df is None:
@@ -120,12 +117,12 @@ def save_booking_to_excel(new_booking):
         user_credentials = UserCredential(USERNAME, PASSWORD)
         ctx = ClientContext(SITE_URL).with_credentials(user_credentials)
         
-        # Create Excel file - UPDATED TO SAVE ALL SHEETS
+        # Create Excel file - SAVE ALL SHEETS
         excel_buffer = io.BytesIO()
         with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
             credentials_df.to_excel(writer, sheet_name="proveedor_credencial", index=False)
             updated_reservas_df.to_excel(writer, sheet_name="proveedor_reservas", index=False)
-            gestion_df.to_excel(writer, sheet_name="proveedor_gestion", index=False)  # NEW - PRESERVE GESTION SHEET
+            gestion_df.to_excel(writer, sheet_name="proveedor_gestion", index=False)
         
         # Get the file info
         file = ctx.web.get_file_by_id(FILE_ID)
@@ -142,15 +139,13 @@ def save_booking_to_excel(new_booking):
         folder.files.add(file_name, excel_buffer.getvalue(), True)
         ctx.execute_query()
         
-        # Clear cache after successful save
+        # Clear cache only after successful save
         download_excel_to_memory.clear()
         
         return True
         
     except Exception as e:
         st.error(f"❌ Error guardando reserva: {str(e)}")
-        # Clear cache even on failure to prevent stale data
-        download_excel_to_memory.clear()
         return False
 
 # ─────────────────────────────────────────────────────────────
@@ -437,28 +432,13 @@ def authenticate_user(usuario, password):
 def main():
     st.title("🚚 Dismac: Reserva de Entrega de Mercadería")
     
-    # Force refresh button for debugging
-    col1, col2, col3 = st.columns([1, 1, 3])
-    with col1:
-        if st.button("🔄 Actualizar Datos"):
-            download_excel_to_memory.clear()
-            st.success("Cache limpiado")
-            st.rerun()
-    
-    # Download Excel when app starts - UPDATED
+    # Download Excel when app starts - ONLY INITIAL LOAD
     with st.spinner("Cargando datos..."):
-        credentials_df, reservas_df, gestion_df = download_excel_to_memory()  # UPDATED - Now gets 3 values
+        credentials_df, reservas_df, gestion_df = download_excel_to_memory()
     
     if credentials_df is None:
         st.error("❌ Error al cargar archivo")
         return
-    
-    # Debug info (remove after testing)
-    with st.expander("🔍 Debug Info"):
-        st.write(f"📊 Total reservas en Excel: {len(reservas_df)}")
-        if len(reservas_df) > 0:
-            st.write("📅 Últimas 3 reservas:")
-            st.dataframe(reservas_df.tail(3)[['Fecha', 'Hora', 'Proveedor']])
     
     # Session state
     if 'authenticated' not in st.session_state:
@@ -539,9 +519,10 @@ def main():
         # Time slot selection
         st.subheader("🕐 Horarios Disponibles")
         
-        # Force fresh data for slot availability
-        download_excel_to_memory.clear()
-        _, fresh_reservas_df, _ = download_excel_to_memory()
+        # Download fresh data before showing available slots (as requested)
+        with st.spinner("Verificando disponibilidad..."):
+            download_excel_to_memory.clear()
+            _, fresh_reservas_df, _ = download_excel_to_memory()
         
         # Generate all slots and check availability
         weekday_slots, saturday_slots = generate_time_slots()
@@ -551,23 +532,14 @@ def main():
         else:  # Monday-Friday
             all_slots = weekday_slots
         
-        # Get booked slots for this date - FIXED: Handle new date/time format
-        date_str = selected_date.strftime('%Y-%m-%d') + ' 00:00:00'  # Match the new format we save
+        # Get booked slots for this date
+        date_str = selected_date.strftime('%Y-%m-%d') + ' 00:00:00'
         booked_reservas = fresh_reservas_df[fresh_reservas_df['Fecha'] == date_str]['Hora'].tolist()
-        
-        # Debug: Show what we found in Excel for this date
-        with st.expander(f"🔍 Reservas para {selected_date}"):
-            date_reservas = fresh_reservas_df[fresh_reservas_df['Fecha'] == date_str]
-            if not date_reservas.empty:
-                st.dataframe(date_reservas[['Hora', 'Proveedor', 'Orden_de_compra']])
-            else:
-                st.write("No hay reservas para esta fecha")
         
         # Convert booked slots to "09:00" format for comparison
         booked_slots = []
         for booked_hora in booked_reservas:
             if ':' in str(booked_hora):
-                # Handle both old "9:00:00" and new "09:00:00" formats
                 parts = str(booked_hora).split(':')
                 formatted_slot = f"{int(parts[0]):02d}:{parts[1]}"
                 booked_slots.append(formatted_slot)
@@ -696,23 +668,6 @@ def main():
                     
                     if success:
                         st.success("✅ Reserva confirmada!")
-                        
-                        # Force refresh data to verify save
-                        with st.spinner("Verificando reserva..."):
-                            download_excel_to_memory.clear()
-                            _, updated_reservas_df, _ = download_excel_to_memory()
-                            
-                        # Verify the booking was saved
-                        if updated_reservas_df is not None:
-                            saved_booking = updated_reservas_df[
-                                (updated_reservas_df['Fecha'] == new_booking['Fecha']) & 
-                                (updated_reservas_df['Hora'] == new_booking['Hora']) & 
-                                (updated_reservas_df['Proveedor'] == new_booking['Proveedor'])
-                            ]
-                            if not saved_booking.empty:
-                                st.info("✅ Reserva verificada en Excel")
-                            else:
-                                st.error("❌ Reserva no encontrada en Excel después de guardar")
                         
                         # Send email if email is available
                         if st.session_state.supplier_email:
