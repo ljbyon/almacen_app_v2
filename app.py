@@ -517,18 +517,8 @@ def main():
             all_slots = weekday_slots
         
         # Get booked slots for this date
-        date_str = selected_date.strftime('%Y-%m-%d') + ' 00:00:00'
-        booked_reservas = reservas_df[reservas_df['Fecha'] == date_str]['Hora'].tolist()
-        
-        # Convert booked slots from "9:00:00" format to "09:00" format for comparison
-        booked_slots = []
-        for booked_hora in booked_reservas:
-            if ':' in str(booked_hora):
-                parts = str(booked_hora).split(':')
-                formatted_slot = f"{int(parts[0]):02d}:{parts[1]}"
-                booked_slots.append(formatted_slot)
-            else:
-                booked_slots.append(str(booked_hora))
+        date_str = selected_date.strftime('%Y-%m-%d')
+        booked_slots = reservas_df[reservas_df['Fecha'] == date_str]['Hora'].tolist()
         
         if not all_slots:
             st.warning("❌ No hay horarios para esta fecha")
