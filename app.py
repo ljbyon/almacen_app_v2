@@ -242,7 +242,7 @@ def send_booking_email(supplier_email, supplier_name, booking_details):
     """Send booking confirmation email with PDF attachment"""
     try:
         # Default CC recipients
-        cc_emails = [""]
+        cc_emails = ["leonardo.byon@gmail.com"]
         
         # Email content
         subject = "Confirmación de Reserva para Entrega de Mercadería"
@@ -465,6 +465,10 @@ def main():
                         st.session_state.supplier_name = usuario
                         st.session_state.supplier_email = email
                         st.session_state.supplier_cc_emails = cc_emails
+                        # Clear any previous session data
+                        st.session_state.orden_compra_list = ['']
+                        if 'selected_slot' in st.session_state:
+                            del st.session_state.selected_slot
                         st.success(message)
                         st.rerun()
                     else:
@@ -483,6 +487,10 @@ def main():
                 st.session_state.supplier_name = None
                 st.session_state.supplier_email = None
                 st.session_state.supplier_cc_emails = []
+                # Clear booking session data
+                st.session_state.orden_compra_list = ['']
+                if 'selected_slot' in st.session_state:
+                    del st.session_state.selected_slot
                 st.rerun()
         
         st.markdown("---")
@@ -517,8 +525,18 @@ def main():
             all_slots = weekday_slots
         
         # Get booked slots for this date
-        date_str = selected_date.strftime('%Y-%m-%d')
-        booked_slots = reservas_df[reservas_df['Fecha'] == date_str]['Hora'].tolist()
+        date_str = selected_date.strftime('%Y-%m-%d') + ' 00:00:00'
+        booked_reservas = reservas_df[reservas_df['Fecha'] == date_str]['Hora'].tolist()
+        
+        # Convert booked slots from "9:00:00" format to "09:00" format for comparison
+        booked_slots = []
+        for booked_hora in booked_reservas:
+            if ':' in str(booked_hora):
+                parts = str(booked_hora).split(':')
+                formatted_slot = f"{int(parts[0]):02d}:{parts[1]}"
+                booked_slots.append(formatted_slot)
+            else:
+                booked_slots.append(str(booked_hora))
         
         if not all_slots:
             st.warning("❌ No hay horarios para esta fecha")
@@ -561,8 +579,8 @@ def main():
             st.markdown("---")
             st.subheader("📦 Información de Entrega")
             
-            # Initialize orden de compra list in session state
-            if 'orden_compra_list' not in st.session_state:
+            # Initialize orden de compra list in session state - reset for each booking session
+            if 'orden_compra_list' not in st.session_state or not st.session_state.orden_compra_list:
                 st.session_state.orden_compra_list = ['']
             
             # Date and time info (outside form so it doesn't reset)
