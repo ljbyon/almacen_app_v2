@@ -250,13 +250,22 @@ def send_booking_email(supplier_email, supplier_name, booking_details):
         
         INSTRUCCIONES:
         ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        • Llegue puntualmente en el horario reservado
-        • Tenga lista el Orden de Compra y cualquier otra documentación relevante
-        • Asegúrese de que los productos y numero de bultos coincidan con el Orden de Compra
-        • Si llega tarde, posiblemente tendra que esperar hasta el proximo cupo disponible del dia
+        • Respeta el horario reservado para tu entrega.
+        • En caso de retraso, podrías tener que esperar hasta el próximo cupo disponible del día o reprogramar tu entrega.
+        • Dismac no se responsabiliza por los tiempos de espera ocasionados por llegadas fuera de horario.
+        • Además, según el tipo de venta, es importante considerar lo siguiente:
+          - Venta al contado: Debes entregar el pedido junto con la factura a nombre del comprador y tres (3) copias de la orden de compra.
+          - Venta en minicuotas: Debes entregar el pedido junto con la factura a nombre de Dismatec S.A. y una (1) copia de la orden de compra.
         
         📎 Se adjunta documento con instrucciones adicionales.
         
+        REQUISITOS DE SEGURIDAD
+        • Pantalón largo, sin rasgados
+        • Botines de seguridad
+        • Casco de seguridad
+        • Chaleco o camisa con reflectivo
+        • No está permitido manillas, cadenas, y principalmente masticar coca.
+
         Gracias por utilizar nuestro sistema de reservas.
         
         Saludos cordiales,
@@ -351,11 +360,11 @@ def get_available_slots(selected_date, reservas_df):
 # 5. Authentication Function - UPDATED TO USE ALL SHEETS
 # ─────────────────────────────────────────────────────────────
 def authenticate_user(usuario, password):
-    """Authenticate user against Excel data and get email"""
+    """Authenticate user against Excel data and get email + CC emails"""
     credentials_df, _, _ = download_excel_to_memory()  # UPDATED - Now returns 3 values
     
     if credentials_df is None:
-        return False, "Error al cargar credenciales", None
+        return False, "Error al cargar credenciales", None, None
     
     # Clean and compare (all data is already strings)
     df_usuarios = credentials_df['usuario'].str.strip()
@@ -366,7 +375,7 @@ def authenticate_user(usuario, password):
     # Find user row
     user_row = credentials_df[df_usuarios == input_usuario]
     if user_row.empty:
-        return False, "Usuario no encontrado", None
+        return False, "Usuario no encontrado", None, None
     
     # Get stored password and clean it
     stored_password = str(user_row.iloc[0]['password']).strip()
@@ -382,9 +391,19 @@ def authenticate_user(usuario, password):
         except:
             email = None
         
-        return True, "Autenticación exitosa", email
+        # Get CC emails
+        cc_emails = []
+        try:
+            cc_data = user_row.iloc[0]['cc']
+            if str(cc_data) != 'nan' and cc_data is not None:
+                # Parse semicolon-separated emails
+                cc_emails = [email.strip() for email in str(cc_data).split(';') if email.strip()]
+        except:
+            cc_emails = []
+        
+        return True, "Autenticación exitosa", email, cc_emails
     
-    return False, "Contraseña incorrecta", None
+    return False, "Contraseña incorrecta", None, None
 
 # ─────────────────────────────────────────────────────────────
 # 6. Main App - UPDATED TO USE ALL SHEETS
@@ -407,6 +426,8 @@ def main():
         st.session_state.supplier_name = None
     if 'supplier_email' not in st.session_state:
         st.session_state.supplier_email = None
+    if 'supplier_cc_emails' not in st.session_state:
+        st.session_state.supplier_cc_emails = []
     
     # Authentication
     if not st.session_state.authenticated:
@@ -419,12 +440,13 @@ def main():
             
             if submitted:
                 if usuario and password:
-                    is_valid, message, email = authenticate_user(usuario, password)
+                    is_valid, message, email, cc_emails = authenticate_user(usuario, password)
                     
                     if is_valid:
                         st.session_state.authenticated = True
                         st.session_state.supplier_name = usuario
                         st.session_state.supplier_email = email
+                        st.session_state.supplier_cc_emails = cc_emails
                         st.success(message)
                         st.rerun()
                     else:
@@ -442,6 +464,7 @@ def main():
                 st.session_state.authenticated = False
                 st.session_state.supplier_name = None
                 st.session_state.supplier_email = None
+                st.session_state.supplier_cc_emails = []
                 st.rerun()
         
         st.markdown("---")
@@ -624,6 +647,7 @@ def main():
                         st.session_state.authenticated = False
                         st.session_state.supplier_name = None
                         st.session_state.supplier_email = None
+                        st.session_state.supplier_cc_emails = []
                         if 'selected_slot' in st.session_state:
                             del st.session_state.selected_slot
                         
