@@ -435,7 +435,7 @@ def main():
     st.title("🚚 Dismac: Reserva de Entrega de Mercadería")
     
     # Download Excel when app starts - UPDATED
-    with st.spinner("Cargando datos..."):
+    with st.spinner("Actualizando base de datos..."):
         credentials_df, reservas_df, gestion_df = download_excel_to_memory()  # UPDATED - Now gets 3 values
     
     if credentials_df is None:
@@ -658,13 +658,9 @@ def main():
                                 )
                             if email_sent:
                                 st.success(f"📧 Email de confirmación enviado a: {st.session_state.supplier_email}")
-                                # Build CC list for display (always includes defaults + supplier-specific)
-                                all_cc_emails = ["marketplace@dismac.com.bo"]
+                                # Only show supplier-specific CC emails in notification
                                 if st.session_state.supplier_cc_emails:
-                                    for email in st.session_state.supplier_cc_emails:
-                                        if email not in all_cc_emails:
-                                            all_cc_emails.append(email)
-                                st.success(f"📧 CC enviado a: {', '.join(all_cc_emails)}")
+                                    st.success(f"📧 CC enviado a: {', '.join(st.session_state.supplier_cc_emails)}")
                             else:
                                 st.warning("⚠️ Reserva guardada pero error enviando email")
                         else:
