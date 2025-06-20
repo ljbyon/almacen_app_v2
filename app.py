@@ -242,7 +242,7 @@ def send_booking_email(supplier_email, supplier_name, booking_details):
     """Send booking confirmation email with PDF attachment"""
     try:
         # Default CC recipients
-        cc_emails = ["leonardo.byon@gmail.com"]
+        cc_emails = [""]
         
         # Email content
         subject = "Confirmación de Reserva para Entrega de Mercadería"
