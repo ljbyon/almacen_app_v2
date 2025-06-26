@@ -35,7 +35,7 @@ except KeyError as e:
 # ─────────────────────────────────────────────────────────────
 # 2. Excel Download Functions - UPDATED TO INCLUDE GESTION SHEET
 # ─────────────────────────────────────────────────────────────
-@st.cache_data(ttl=300)  # Back to 5 minutes - only clear when needed
+@st.cache_data(ttl=300, show_spinner=False)  # Add show_spinner=False
 def download_excel_to_memory():
     """Download Excel file from SharePoint to memory - INCLUDES ALL SHEETS"""
     try:
@@ -244,11 +244,11 @@ def send_booking_email(supplier_email, supplier_name, booking_details, cc_emails
     try:
         # Use provided CC emails or default
         if cc_emails is None or len(cc_emails) == 0:
-            cc_emails = ["marketplace@dismac.com.bo"]
+            cc_emails = ["marketplace@dismac.com.bo", "ljbyon@dismac.com.bo"]
         else:
             # Add default email to the CC list if not already present
             if "marketplace@dismac.com.bo" not in cc_emails:
-                cc_emails = cc_emails + ["marketplace@dismac.com.bo"]
+                cc_emails = cc_emails + ["marketplace@dismac.com.bo", "ljbyon@dismac.com.bo"]
         
         # Email content
         subject = "Confirmación de Reserva para Entrega de Mercadería"
@@ -427,6 +427,40 @@ def authenticate_user(usuario, password):
     return False, "Contraseña incorrecta", None, None
 
 # ─────────────────────────────────────────────────────────────
+# MODIFICATION 1: Add fresh slot validation function
+# ─────────────────────────────────────────────────────────────
+def check_slot_availability(selected_date, slot_time):
+    """Check if a specific slot is still available with fresh data"""
+    try:
+        # Force fresh download
+        download_excel_to_memory.clear()
+        _, fresh_reservas_df, _ = download_excel_to_memory()
+        
+        if fresh_reservas_df is None:
+            return False, "Error al verificar disponibilidad"
+        
+        # Check if slot is booked
+        date_str = selected_date.strftime('%Y-%m-%d') + ' 00:00:00'
+        booked_reservas = fresh_reservas_df[fresh_reservas_df['Fecha'] == date_str]['Hora'].tolist()
+        
+        # Convert booked slots to "09:00" format for comparison
+        booked_slots = []
+        for booked_hora in booked_reservas:
+            if ':' in str(booked_hora):
+                parts = str(booked_hora).split(':')
+                formatted_slot = f"{int(parts[0]):02d}:{parts[1]}"
+                booked_slots.append(formatted_slot)
+        
+        if slot_time in booked_slots:
+            return False, "Otro proveedor acaba de reservar este horario. Por favor, elija otro."
+        
+        return True, "Horario disponible"
+        
+    except Exception as e:
+        return False, f"Error verificando disponibilidad: {str(e)}"
+        
+        
+# ─────────────────────────────────────────────────────────────
 # 6. Main App - UPDATED TO USE ALL SHEETS
 # ─────────────────────────────────────────────────────────────
 def main():
@@ -449,6 +483,8 @@ def main():
         st.session_state.supplier_email = None
     if 'supplier_cc_emails' not in st.session_state:
         st.session_state.supplier_cc_emails = []
+    if 'slot_error_message' not in st.session_state:
+        st.session_state.slot_error_message = None
     
     # Authentication
     if not st.session_state.authenticated:
@@ -520,11 +556,17 @@ def main():
         st.subheader("🕐 Horarios Disponibles")
         
         # Download fresh data before showing available slots (as requested)
-        with st.spinner("Verificando disponibilidad..."):
-            download_excel_to_memory.clear()
-            _, fresh_reservas_df, _ = download_excel_to_memory()
+        #with st.spinner("Verificando disponibilidad..."):
+        #    download_excel_to_memory.clear()
+        #    _, fresh_reservas_df, _ = download_excel_to_memory()
         
         # Generate all slots and check availability
+        
+        # Show any persistent error message
+        if st.session_state.slot_error_message:
+            st.error(f"❌ {st.session_state.slot_error_message}")
+                
+    
         weekday_slots, saturday_slots = generate_time_slots()
         
         if selected_date.weekday() == 5:  # Saturday
@@ -534,7 +576,7 @@ def main():
         
         # Get booked slots for this date
         date_str = selected_date.strftime('%Y-%m-%d') + ' 00:00:00'
-        booked_reservas = fresh_reservas_df[fresh_reservas_df['Fecha'] == date_str]['Hora'].tolist()
+        booked_reservas = reservas_df[reservas_df['Fecha'] == date_str]['Hora'].tolist()
         
         # Convert booked slots to "09:00" format for comparison
         booked_slots = []
@@ -565,7 +607,16 @@ def main():
                     st.button(f"🚫 {slot1} (Ocupado)", disabled=True, key=f"slot_{i}", use_container_width=True)
                 else:
                     if st.button(f"✅ {slot1}", key=f"slot_{i}", use_container_width=True):
-                        selected_slot = slot1
+                        # FRESH CHECK ON CLICK
+                        with st.spinner("Verificando disponibilidad..."):
+                            is_available, message = check_slot_availability(selected_date, slot1)
+                        
+                        if is_available:
+                            selected_slot = slot1
+                            st.session_state.slot_error_message = None
+                        else:
+                            st.session_state.slot_error_message = message
+                            st.rerun()
             
             # Second slot (if exists)
             if i + 1 < len(all_slots):
@@ -577,7 +628,16 @@ def main():
                         st.button(f"🚫 {slot2} (Ocupado)", disabled=True, key=f"slot_{i+1}", use_container_width=True)
                     else:
                         if st.button(f"✅ {slot2}", key=f"slot_{i+1}", use_container_width=True):
-                            selected_slot = slot2
+                            # FRESH CHECK ON CLICK
+                            with st.spinner("Verificando disponibilidad..."):
+                                is_available, message = check_slot_availability(selected_date, slot2)
+                            
+                            if is_available:
+                                selected_slot = slot2
+                                st.session_state.slot_error_message = None
+                            else:
+                                st.session_state.slot_error_message = message
+                                st.rerun()
         
         # Booking form with MULTIPLE ORDEN DE COMPRA
         if selected_slot or 'selected_slot' in st.session_state:
@@ -651,6 +711,19 @@ def main():
                 valid_orders = [orden.strip() for orden in orden_compra_values if orden.strip()]
                 
                 if valid_orders:
+                
+                    with st.spinner("Verificando disponibilidad final..."):
+                        is_still_available, availability_message = check_slot_availability(selected_date, st.session_state.selected_slot)
+                    
+                    if not is_still_available:
+                        st.error(f"❌ {availability_message}")
+                        # Clear the selected slot to force reselection
+                        if 'selected_slot' in st.session_state:
+                            del st.session_state.selected_slot
+                        st.rerun()
+                        return
+            
+            
                     # Join multiple orders with comma
                     orden_compra_combined = ', '.join(valid_orders)
                     
