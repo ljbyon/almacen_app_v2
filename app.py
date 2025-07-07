@@ -103,10 +103,28 @@ def save_booking_to_excel(new_booking):
     """Save new booking to Excel file - PRESERVES ALL SHEETS"""
     try:
         # Load current data
+        download_excel_to_memory.clear()
         credentials_df, reservas_df, gestion_df = download_excel_to_memory()
         
         if reservas_df is None:
             st.error("❌ No se pudo cargar el archivo Excel")
+            return False
+
+       # Final conflict check
+        fecha_reserva = new_booking['Fecha']
+        hora_reserva = new_booking['Hora']
+        
+        existing_booking = reservas_df[
+            (reservas_df['Fecha'] == fecha_reserva) & 
+            (reservas_df['Hora'] == hora_reserva)
+        ]
+
+        if not existing_booking.empty:
+            st.error("❌ Otro proveedor acaba de reservar este horario")
+            
+            # ✅ CRITICAL: Clear cache so slot display updates
+            download_excel_to_memory.clear()
+            
             return False
         
         # Add new booking
